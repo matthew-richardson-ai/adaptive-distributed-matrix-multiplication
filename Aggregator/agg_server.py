@@ -18,6 +18,8 @@ from Protocol.constants import (
     MSG_JOB_RESULT,
     MSG_JOB_STATUS,
     MSG_RESULT_ACK,
+    MSG_RESULT_BATCH,
+    MSG_RESULT_BATCH_ACK,
     MSG_RESULT_RETURN,
 )
 from Protocol.framing import ProtocolError, recv_message, send_message
@@ -167,6 +169,58 @@ class AggregatorServer:
             },
         )
 
+
+    def _handle_result_batch(self, conn: socket.socket, header: dict, payload: bytes) -> None:
+        items = header.get("items", [])
+        accepted_task_ids: list[str] = []
+        duplicate_task_ids: list[str] = []
+        job_summaries: dict[str, dict] = {}
+
+        for item in items:
+            job_id = str(item["job_id"])
+            task_id = str(item["task_id"])
+            job = self.state.get_job(job_id)
+            if job is None:
+                raise ValueError(f"Unknown job_id: {job_id}")
+
+            offset = int(item["payload_offset"])
+            length = int(item["payload_length"])
+            if offset < 0 or length < 0 or offset + length > len(payload):
+                raise ValueError(f"Invalid result payload slice for task {task_id}.")
+
+            partial = matrix_from_bytes(
+                payload[offset : offset + length],
+                item["result_shape"],
+            )
+
+            with self.state.lock:
+                accepted = job.add_result(
+                    task_id=task_id,
+                    row_start=int(item["row_start"]),
+                    col_start=int(item["col_start"]),
+                    partial=partial,
+                )
+                job_summaries[job_id] = {
+                    "completed_tasks": len(job.completed_tasks),
+                    "expected_tasks": job.expected_tasks,
+                    "complete": job.complete,
+                }
+
+            if accepted:
+                accepted_task_ids.append(task_id)
+            else:
+                duplicate_task_ids.append(task_id)
+
+        send_message(
+            conn,
+            MSG_RESULT_BATCH_ACK,
+            {
+                "accepted_task_ids": accepted_task_ids,
+                "duplicate_task_ids": duplicate_task_ids,
+                "jobs": job_summaries,
+            },
+        )
+
     def _handle_status(self, conn: socket.socket, header: dict) -> None:
         job_id = str(header["job_id"])
         job = self.state.get_job(job_id)
@@ -210,6 +264,8 @@ class AggregatorServer:
                         self._handle_job_init(conn, header)
                     elif message_type == MSG_RESULT_RETURN:
                         self._handle_result(conn, header, payload)
+                    elif message_type == MSG_RESULT_BATCH:
+                        self._handle_result_batch(conn, header, payload)
                     elif message_type == MSG_JOB_STATUS:
                         self._handle_status(conn, header)
                     else:
