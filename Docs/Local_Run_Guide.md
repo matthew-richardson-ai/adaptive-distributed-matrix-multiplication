@@ -239,3 +239,30 @@ docker compose up -d --build --scale worker=2
 ```
 
 Use the same benchmark commands after the containers report healthy startup logs.
+
+
+## Controlled worker scaling experiment
+
+Distributed workers are now pinned to one BLAS thread each so worker count is a meaningful experimental variable. The benchmark client also reports two serial references:
+
+- optimized NumPy serial reference, used as the numerical oracle and high-performance local comparison
+- single-threaded blocked serial baseline, using the same block granularity as the distributed workers
+
+After pulling this change, reinstall development dependencies because the benchmark client now uses `threadpoolctl`:
+
+```powershell
+git pull origin main
+python -m pip install -r requirements-dev.txt
+docker compose down
+docker compose up -d --build --scale worker=2
+```
+
+For a focused scaling experiment at `N=1000` and block size `256`, run:
+
+```powershell
+python -m Benchmarks.run_suite --config Benchmarks/Configs/scaling_1000_256.json --manage-docker --output Results/scaling_1000_256.json
+```
+
+The configuration runs 1, 2, 4, and 8 workers with five repeated trials per worker count. A summary file is generated automatically with mean, median, and standard deviation.
+
+Keep these new controlled results separate from older exploratory benchmark records because the measurement schema now includes the blocked serial baseline and revised speedup metrics.
