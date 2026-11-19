@@ -23,8 +23,7 @@ from Protocol.constants import (
     MSG_NO_TASK,
     MSG_SUBMIT_ACK,
     MSG_SUBMIT_JOB,
-    MSG_TASK_COMPLETE,
-    MSG_TASK_DENSE,
+    MSG_TASK_BATCH,
     MSG_TASK_REQUEST,
 )
 from Protocol.framing import ProtocolError, recv_message, send_message
@@ -51,15 +50,21 @@ class SchedulerState:
         self.lease_seconds = lease_seconds
         self.lock = threading.RLock()
 
-    def assign_next(self, worker_id: str) -> BlockTask | None:
+    def assign_batch(self, worker_id: str, batch_size: int) -> list[BlockTask]:
         self.requeue_expired()
-        try:
-            task = self.tasks.get_nowait()
-        except queue.Empty:
-            return None
+        assigned: list[BlockTask] = []
+        for _ in range(max(1, batch_size)):
+            try:
+                task = self.tasks.get_nowait()
+            except queue.Empty:
+                break
+            assigned.append(task)
+
+        assigned_at = time.monotonic()
         with self.lock:
-            self.in_flight[task.task_id] = (task, worker_id, time.monotonic())
-        return task
+            for task in assigned:
+                self.in_flight[task.task_id] = (task, worker_id, assigned_at)
+        return assigned
 
     def mark_complete(self, task_id: str) -> bool:
         with self.lock:
@@ -121,6 +126,7 @@ class IngressServer:
         self.aggregator_host = aggregator_host
         self.aggregator_port = aggregator_port
         lease_seconds = float(os.getenv("TASK_LEASE_SECONDS", "30"))
+        self.batch_size = max(1, int(os.getenv("TASK_BATCH_SIZE", "8")))
         self.state = SchedulerState(lease_seconds=lease_seconds)
 
     def _send_error(self, conn: socket.socket, message: str) -> None:
@@ -223,25 +229,47 @@ class IngressServer:
     def _handle_task_request(self, conn: socket.socket, header: dict) -> None:
         worker_id = str(header.get("worker_id", "unknown-worker"))
 
-        task = self.state.assign_next(worker_id)
-        if task is None:
-            send_message(conn, MSG_NO_TASK, {"worker_id": worker_id, "retry_after_ms": 100})
+        for task_id in header.get("completed_task_ids", []):
+            self.state.mark_complete(str(task_id))
+
+        tasks = self.state.assign_batch(worker_id, self.batch_size)
+        if not tasks:
+            send_message(conn, MSG_NO_TASK, {"worker_id": worker_id, "retry_after_ms": 25})
             return
 
-        payload, matrix_meta = pack_two_matrices(task.a_block, task.b_block)
-        metadata = {
-            "worker_id": worker_id,
-            "job_id": task.job_id,
-            "task_id": task.task_id,
-            "i": task.i,
-            "j": task.j,
-            "k": task.k,
-            "row_start": task.row_start,
-            "col_start": task.col_start,
-            "result_shape": [task.a_block.shape[0], task.b_block.shape[1]],
-            **matrix_meta,
-        }
-        send_message(conn, MSG_TASK_DENSE, metadata, payload)
+        payload_parts: list[bytes] = []
+        items: list[dict] = []
+        offset = 0
+
+        for task in tasks:
+            task_payload, matrix_meta = pack_two_matrices(task.a_block, task.b_block)
+            item = {
+                "job_id": task.job_id,
+                "task_id": task.task_id,
+                "i": task.i,
+                "j": task.j,
+                "k": task.k,
+                "row_start": task.row_start,
+                "col_start": task.col_start,
+                "result_shape": [task.a_block.shape[0], task.b_block.shape[1]],
+                "payload_offset": offset,
+                "payload_length": len(task_payload),
+                **matrix_meta,
+            }
+            items.append(item)
+            payload_parts.append(task_payload)
+            offset += len(task_payload)
+
+        send_message(
+            conn,
+            MSG_TASK_BATCH,
+            {
+                "worker_id": worker_id,
+                "task_count": len(items),
+                "items": items,
+            },
+            b"".join(payload_parts),
+        )
 
     def handle_connection(self, conn: socket.socket, address: tuple[str, int]) -> None:
         with conn:
@@ -261,14 +289,6 @@ class IngressServer:
                         self._handle_submit(conn, header, payload)
                     elif header["type"] == MSG_TASK_REQUEST:
                         self._handle_task_request(conn, header)
-                    elif header["type"] == MSG_TASK_COMPLETE:
-                        task_id = str(header["task_id"])
-                        accepted = self.state.mark_complete(task_id)
-                        send_message(
-                            conn,
-                            MSG_TASK_COMPLETE,
-                            {"task_id": task_id, "accepted": accepted},
-                        )
                     else:
                         self._send_error(conn, f"Unsupported message type: {header['type']}")
                 except Exception as exc:
