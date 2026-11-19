@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--config", default="Benchmarks/Configs/dev.json")
     parser.add_argument("--manage-docker", action="store_true")
     parser.add_argument("--output", default="Results/benchmark_results.json")
+    parser.add_argument("--summary-output", default=None)
     args = parser.parse_args()
 
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
@@ -79,6 +80,21 @@ def main() -> None:
                                 command.append("--adaptive")
                                 command.extend(["--epsilon", str(mode.get("epsilon", 0.0))])
                             run_command(command)
+
+    summary_output = args.summary_output or str(
+        Path(args.output).with_name(Path(args.output).stem + "_summary.json")
+    )
+    run_command(
+        [
+            sys.executable,
+            "-m",
+            "Benchmarks.summarize_results",
+            "--input",
+            args.output,
+            "--output",
+            summary_output,
+        ]
+    )
 
     print("Benchmark suite complete.", flush=True)
 
