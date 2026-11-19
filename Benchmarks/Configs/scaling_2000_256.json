@@ -1,0 +1,13 @@
+{
+  "sizes": [2000],
+  "block_sizes": [256],
+  "worker_counts": [1, 2, 4, 8],
+  "matrix_types": ["dense"],
+  "adaptive_modes": [
+    {"adaptive": false, "epsilon": 0.0}
+  ],
+  "zero_block_fraction": 0.5,
+  "seed": 2234,
+  "repeats": 3,
+  "timeout_seconds": 600
+}
