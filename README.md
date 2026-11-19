@@ -61,6 +61,7 @@ The adaptive version inserts a decision step before task dispatch. The baseline 
 - [Implementation Plan](Docs/Implementation_Plan.md)
 - [TCP Protocol Specification](Docs/Protocol_Spec.md)
 - [Testing and Benchmark Plan](Docs/Testing_and_Benchmarking.md)
+- [Local Run Guide](Docs/Local_Run_Guide.md)
 - [Research Roadmap](Docs/Roadmap_V3.md)
 
 ## Definition of the Core Baseline
@@ -74,3 +75,15 @@ Ingress -> TCP -> Docker Worker(s) -> Aggregator -> Final Matrix
 and the reconstructed result matches the serial reference within the selected numerical tolerance.
 
 Adaptive pruning and low-rank processing are not prerequisites for baseline correctness.
+
+
+## Quick Start
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+docker compose up -d --build --scale worker=2
+python -m Benchmarks.run_benchmarks --size 32 --block-size 16 --workers 2
+```
+
+For the full VS Code / Docker workflow, see [Docs/Local_Run_Guide.md](Docs/Local_Run_Guide.md).
