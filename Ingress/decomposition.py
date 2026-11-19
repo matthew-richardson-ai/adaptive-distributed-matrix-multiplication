@@ -78,8 +78,11 @@ def iter_block_tasks(
                     i=i,
                     j=j,
                     k=k,
-                    a_block=np.ascontiguousarray(a_pad[rs:re, ks:ke]),
-                    b_block=np.ascontiguousarray(b_pad[ks:ke, cs:ce]),
+                    # Keep lightweight views here. Contiguous copies are created only when a
+                    # task is serialized for a worker, avoiding a full duplicate of every
+                    # block pair in the scheduler queue.
+                    a_block=a_pad[rs:re, ks:ke],
+                    b_block=b_pad[ks:ke, cs:ce],
                     row_start=rs,
                     col_start=cs,
                 )
