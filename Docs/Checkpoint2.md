@@ -1,79 +1,66 @@
-# CSC 4770 / 5770 Checkpoint 2 Human Summary
-
-**James Finnegan and Matthew Richardson**
+# Checkpoint 2 Report
 
 ## Adaptive Distributed Matrix Multiplication
 
-### Purpose of This Document
-
-This is a practical Checkpoint 2 briefing document. It is written to help explain the project clearly in conversation before the final IEEE/ACM paper is completed.
-
-The main goals for Checkpoint 2 are to explain:
-
-- what problem the project is trying to solve
-- what system has been built
-- what has been implemented and verified
-- what problems were encountered during development
-- what experimental results have been collected so far
-- what those results mean
-- what remains before the final paper, presentation, and demonstration
+**James Finnegan and Matthew Richardson**  
+**CSC 4770 / 5770**
 
 ---
 
-## 1. What Problem Are We Solving?
+## 1. Project Overview
 
-The course project requires a distributed matrix multiplication system built from separate microservices. The system must divide large matrices into smaller jobs, distribute those jobs to independent workers, communicate using TCP sockets, and reconstruct the final matrix through an aggregation service.
+This project implements a distributed blocked matrix multiplication system using Docker microservices that communicate through TCP sockets. Two input matrices are divided into smaller block-multiplication tasks, distributed across worker containers, and reconstructed by a dedicated aggregation service.
 
-The basic idea sounds simple: if matrix multiplication can be divided into independent pieces, then adding workers should allow those pieces to be computed in parallel.
+The project also evaluates an adaptive scheduling strategy for block-sparse matrices. Before a task is dispatched, the scheduler can identify block products that are guaranteed to contribute zero to the final result and skip them entirely.
 
-The actual systems problem is more complicated.
+The central systems question is:
 
-Distributed execution introduces overhead that does not exist in a single-process matrix multiplication. Before a worker can multiply two blocks, the system has to:
-
-1. divide the matrices into blocks
-2. create tasks
-3. serialize the task data
-4. send it through TCP
-5. schedule it to a worker
-6. deserialize it
-7. compute the block product
-8. send the result back
-9. aggregate the partial result into the final matrix
-
-Because of those costs, adding more workers does not automatically make the system faster.
-
-The project therefore asks:
-
-> When does distributed blocked matrix multiplication become worthwhile despite the communication, scheduling, container, and aggregation overhead?
+> When does distributed blocked matrix multiplication become worthwhile despite the communication, scheduling, container, and aggregation overhead introduced by distribution?
 
 The graduate extension adds a second question:
 
-> Can matrix structure be used to identify work that does not need to be performed, so that the system avoids enough computation and communication to justify the cost of making that decision?
-
-The first adaptive mechanism used to answer that question is sparsity-aware task pruning.
+> Can matrix structure be used to eliminate enough unnecessary computation and network traffic to improve overall distributed performance?
 
 ---
 
-## 2. What Are We Building?
+## 2. Background and Motivation
 
-The system is an adaptive distributed blocked matrix multiplication platform implemented with Docker microservices and TCP socket communication.
+Matrix multiplication is widely used in scientific computing, machine learning, simulation, and numerical analysis. It is naturally parallelizable because an output matrix can be divided into blocks, and each output block is formed from a collection of independent block products.
 
-The current architecture is:
+A distributed implementation introduces additional costs that do not exist in a single-process multiplication. Before a worker performs useful computation, the system must:
+
+- decompose the matrices
+- create and schedule tasks
+- serialize matrix blocks
+- transmit data over TCP
+- deserialize data at the worker
+- return partial products
+- aggregate those results into the final matrix
+
+Because of this overhead, increasing the number of workers does not automatically improve performance.
+
+This project therefore treats matrix multiplication as a distributed-systems experiment rather than an attempt to outperform optimized BLAS or NumPy on a single machine. The objective is to measure the tradeoff between useful parallel computation and the systems overhead required to distribute that computation.
+
+---
+
+## 3. System Architecture
+
+The implemented architecture is shown below.
 
 ```text
-                Input matrices A and B
+                Input Matrices A and B
                          |
                          v
                 Ingress / Scheduler
                          |
-              Block decomposition
+              Block Decomposition
                          |
-                Adaptive decision
+                Adaptive Decision
                   /           \
-             dispatch        prune
+             Dispatch        Prune
                  |
                  v
-             TCP tasks
+              TCP Tasks
                  |
        +---------+---------+
        |         |         |
@@ -86,45 +73,41 @@ The current architecture is:
               Aggregator
                  |
                  v
-            Final matrix C
+            Final Matrix C
                  |
                  v
-        Numerical validation
+        Numerical Validation
 ```
-
-The major service roles are:
 
 ### Ingress / Scheduler
 
-The Ingress service accepts the input matrices, validates them, divides them into blocks, creates multiplication tasks, performs adaptive pruning checks when enabled, and distributes work to available workers.
+The Ingress service validates the input matrices, pads them when necessary, divides them into blocks, creates multiplication tasks, applies adaptive pruning when enabled, and schedules work across the worker pool.
 
 ### Worker Pool
 
-Each worker runs in its own Docker container. Workers request tasks, compute block products independently, and return their partial results over TCP.
-
-The number of workers can be changed so horizontal scaling can be tested.
+Each worker runs in its own Docker container. Workers pull tasks from the scheduler, compute block products independently, and return results over TCP.
 
 ### Aggregator
 
-The Aggregator receives partial block products and adds them to the appropriate output block until the complete result matrix has been reconstructed.
+The Aggregator receives partial block products and accumulates them into the correct output blocks until the final matrix is complete.
 
 ### Benchmark Driver
 
-The benchmark system generates test matrices, measures serial and distributed execution time, validates numerical correctness, records task statistics, and saves repeatable JSON results.
+The benchmark system generates test matrices, runs serial and distributed comparisons, validates numerical correctness, records timing data and task statistics, and stores repeatable JSON results.
 
 ---
 
-## 3. What Has Been Implemented?
+## 4. Implementation Progress
 
-The core distributed system is working end-to-end.
+The core distributed system is now working end-to-end.
 
-Implemented and verified components include:
+### Implemented Components
 
 - NumPy serial reference multiplication
 - single-threaded blocked serial comparison
 - numerical correctness validation
 - blocked matrix decomposition
-- matrix padding for non-even block dimensions
+- padding for non-even block dimensions
 - framed TCP protocol
 - binary float64 matrix transmission
 - Ingress microservice
@@ -136,129 +119,129 @@ Implemented and verified components include:
 - task batching
 - batched result transmission
 - task leasing and unfinished-task requeue support
-- duplicate result protection
+- duplicate-result protection
 - exact-zero sparsity pruning
 - Frobenius-norm bound support for optional approximate pruning
-- dense matrix generation
-- block-sparse matrix generation
-- low-rank matrix generation
-- benchmark result recording
+- dense, block-sparse, and low-rank matrix generators
 - repeated benchmark suites
 - benchmark summary generation
 - configurable Docker worker scaling
-- BLAS thread control for fairer worker-count experiments
+- controlled BLAS threading for worker-count experiments
 - automated unit tests
 - Docker end-to-end smoke testing
 
 The current Python test suite passes all 20 tests.
 
-Low-rank helper functions and kernels also exist, but low-rank factored transmission has not been integrated into the TCP network path and remains an optional extension.
+Low-rank helper functions and kernels have also been implemented, but low-rank factored transmission has not yet been integrated into the TCP network path. It remains an optional extension.
 
 ---
 
-## 4. Important Implementation Decisions
+## 5. Key Design Decisions
 
 ### TCP Framing
 
-TCP is a byte stream and does not preserve application message boundaries. The system therefore uses explicit framing so each message contains metadata describing its type and payload size.
+TCP is a byte stream and does not preserve message boundaries. The protocol therefore uses explicit framing with message metadata and payload lengths.
 
-Matrix values are transmitted as binary float64 data instead of text representations.
+Matrix values are transmitted as binary float64 data rather than text.
 
-### Pull-Based Worker Scheduling
+### Pull-Based Scheduling
 
-Workers request work from the scheduler instead of the scheduler permanently assigning tasks to specific workers.
-
-This makes it easier to add or remove workers and naturally sends more work to workers that become available sooner.
+Workers request tasks instead of receiving permanently assigned work. This allows faster workers to continue taking new tasks and makes horizontal scaling easier to test.
 
 ### Task Batching
 
-The first network implementation sent tasks and results too frequently.
+The first distributed implementation created too many small network exchanges. Communication overhead became much larger than the useful computation.
 
-That caused TCP communication overhead to dominate the actual matrix multiplication.
-
-The system was changed so multiple tasks and multiple results could be transmitted in batches.
-
-This was one of the most important performance improvements made during implementation.
+The system was changed so multiple tasks and multiple results could be transmitted in batches. This became one of the most important performance improvements in the project.
 
 ### Controlled BLAS Threading
 
-NumPy and BLAS libraries can internally use multiple CPU threads.
+NumPy and BLAS libraries can internally create multiple computation threads. Without controlling this, the number of Docker workers would not accurately represent the degree of parallelism being tested.
 
-Without controlling that behavior, four Docker workers might actually create many more than four computation threads, making worker-count experiments misleading.
-
-Worker containers are therefore restricted to one BLAS thread so the Docker worker count represents the parallelism being tested more accurately.
+Each worker container is therefore restricted to one BLAS thread.
 
 ### Adaptive Exact-Zero Pruning
 
-For block-sparse matrices, the scheduler can inspect a candidate block multiplication before sending it to a worker.
+For block-sparse matrices, the scheduler checks candidate block products before dispatch.
 
-If either input block makes the product exactly zero, the multiplication can be skipped without changing the final mathematical result.
+If a product is guaranteed to be zero, the task is skipped without changing the mathematical result.
 
 This reduces:
 
-- tasks sent over TCP
-- matrix blocks transmitted
+- TCP traffic
+- task count
 - worker computation
-- results returned
+- returned result traffic
 - aggregation work
-
-Because exact-zero pruning is mathematically lossless, it is the first adaptive optimization being evaluated.
 
 ---
 
-## 5. Problems and Issues Encountered
+## 6. Development Challenges
 
-Several implementation problems became useful parts of the project because they revealed where distributed overhead actually occurs.
+Several development issues directly influenced the design and experimental methodology.
 
-### Excessive TCP Communication
+### Excessive Communication Overhead
 
-The original implementation created too many small network exchanges.
+An early 500 x 500 dense test using block size 64 and two workers took approximately 49 seconds.
 
-For a 500 x 500 dense matrix with block size 64 and two workers, an early implementation took approximately:
+After batched task and result communication was implemented, the same general workload completed in approximately 2.07 seconds.
 
-```text
-49.0 seconds
-```
-
-After batched task and result communication was implemented, the same general workload completed in approximately:
-
-```text
-2.07 seconds
-```
-
-This showed that communication granularity can matter more than the arithmetic itself in a microservice implementation.
+This demonstrated that network granularity can dominate runtime in a microservice system.
 
 ### Worker Oversubscription
 
-Initial worker-count experiments were difficult to interpret because NumPy could internally create additional computation threads.
+Initial worker-count results were difficult to interpret because NumPy could internally create additional threads.
 
-BLAS threading was later restricted to one thread per worker container.
+Restricting each worker to one BLAS thread made worker-count comparisons much more meaningful.
 
-### Docker / WSL Stability
+### Docker and WSL Stability
 
-Docker Desktop and WSL2 occasionally became unresponsive during development.
+Docker Desktop and WSL2 occasionally became unstable during development. A heavier benchmark also coincided with a host shutdown, reinforcing the need to treat host CPU and memory limits as part of the experimental environment.
 
-One heavier experiment also coincided with a host-computer shutdown, which reinforced the need to treat available CPU and memory as experimental constraints rather than assuming arbitrary worker scaling.
+### Benchmark Dependency Failure
 
-### Benchmark Dependency Issue
+A benchmark-only dependency was accidentally imported into the production Ingress service. This caused the Ingress container to repeatedly restart because the package was not installed in that image.
 
-A benchmark-only dependency was accidentally imported into the production Ingress service.
+The benchmark dependency was removed from the production service path.
 
-The Ingress container repeatedly restarted because that package was not installed in the service image.
+### Scaling Saturation
 
-The dependency was removed from the service path so production microservices no longer depend on benchmark-specific code.
-
-### Worker Scaling Is Not Automatically Better
-
-Repeated experiments showed that increasing worker count eventually stops helping and can increase variability.
-
-This is not treated as a failure of the project. It is one of the main distributed-systems effects the project is intended to measure.
+Repeated experiments showed that adding workers eventually stops improving performance and can increase runtime variability. This is now treated as one of the main findings of the project rather than an implementation failure.
 
 ---
 
-## 6. Current Experimental Results
+## 7. Experimental Design
 
-### Experiment A: Dense Scaling at N = 1000
+The current experiments compare three main execution modes:
+
+1. optimized NumPy serial multiplication
+2. distributed blocked multiplication without adaptive pruning
+3. distributed blocked multiplication with sparsity-aware pruning
+
+### Primary Experimental Variables
+
+- matrix size
+- block size
+- worker count
+- matrix structure
+- adaptive pruning mode
+
+### Primary Measurements
+
+- total runtime
+- candidate task count
+- dispatched task count
+- pruned task count
+- worker scaling behavior
+- numerical error
+
+Dense matrices are used as a control case. Block-sparse matrices are used to evaluate whether pruning removes enough unnecessary work to improve total runtime.
+
+---
+
+## 8. Current Results
+
+### 8.1 Dense Scaling: 1000 x 1000
 
 Configuration:
 
@@ -270,22 +253,22 @@ Trials: 5 per worker count
 Adaptive pruning: disabled
 ```
 
-Mean distributed runtime:
-
-| Workers | Mean Runtime |
+| Workers | Mean Distributed Runtime |
 |---:|---:|
 | 1 | 1.596 s |
 | 2 | 1.011 s |
 | 4 | 0.896 s |
 | 8 | 1.074 s |
 
-The runtime improved from one worker through four workers.
+Performance improved from one worker through four workers.
 
-Eight workers did not improve the mean runtime and produced substantially more variability.
+The eight-worker configuration did not improve the mean runtime and produced substantially more variability.
 
-For this workload, four workers gave the best mean performance.
+For this workload, four workers produced the best mean runtime.
 
-### Experiment B: Dense Scaling at N = 2000
+---
+
+### 8.2 Dense Scaling: 2000 x 2000
 
 Configuration:
 
@@ -297,9 +280,7 @@ Trials: 3 per worker count
 Adaptive pruning: disabled
 ```
 
-Mean distributed runtime:
-
-| Workers | Mean Runtime |
+| Workers | Mean Distributed Runtime |
 |---:|---:|
 | 1 | 8.686 s |
 | 2 | 5.873 s |
@@ -307,11 +288,11 @@ Mean distributed runtime:
 
 Two workers produced the best mean runtime.
 
-The four-worker configuration showed much greater runtime variability.
+The four-worker configuration was slower and showed greater variability, suggesting contention or coordination overhead at the host level.
 
-These results suggest that the useful worker count depends on workload size and available host resources. Increasing worker count eventually introduces enough contention or coordination overhead to offset the added parallelism.
+---
 
-### Experiment C: Block-Sparse Adaptive Pruning at N = 2000
+### 8.3 Block-Sparse Adaptive Pruning: 2000 x 2000
 
 Configuration:
 
@@ -325,31 +306,17 @@ Trials: 3 per configuration
 Adaptive epsilon: 0
 ```
 
-The adaptive test used exact-zero pruning only.
-
-Mean distributed runtime:
-
 | Workers | Sparse Baseline | Adaptive Sparse | Runtime Reduction |
 |---:|---:|---:|---:|
 | 1 | 8.437 s | 3.460 s | about 59% |
 | 2 | 5.777 s | 3.492 s | about 40% |
 | 4 | 6.018 s | 3.386 s | about 44% |
 
-Each run began with:
+Each run began with 512 candidate block multiplications.
 
-```text
-512 candidate block multiplications
-```
+The adaptive scheduler reduced that workload to approximately 118 to 128 dispatched tasks, pruning approximately 384 to 394 tasks.
 
-The adaptive scheduler reduced that to approximately:
-
-```text
-118 to 128 dispatched tasks
-```
-
-Approximately 384 to 394 candidate tasks were pruned.
-
-That means roughly three quarters of the candidate distributed work was avoided.
+This removed roughly three quarters of the candidate distributed work.
 
 The relative numerical error remained approximately:
 
@@ -357,45 +324,39 @@ The relative numerical error remained approximately:
 5 x 10^-16
 ```
 
-which is consistent with ordinary floating-point accumulation differences.
-
-Because exact-zero pruning does not approximate the matrix product, the runtime improvement was achieved without meaningful loss of numerical correctness.
+Exact-zero pruning therefore reduced runtime substantially without changing the mathematical result.
 
 ---
 
-## 7. What Have We Learned So Far?
+## 9. Preliminary Findings
 
-The experiments currently support several conclusions.
+The current results support several conclusions.
 
-### 1. Distribution Has a Significant Fixed Cost
+### Distributed Execution Has Significant Fixed Overhead
 
-The distributed implementation is still slower than optimized local NumPy multiplication at the tested matrix sizes.
+At the tested matrix sizes, the Docker/TCP implementation remains slower than optimized local NumPy multiplication.
 
-That is expected because NumPy uses highly optimized native linear algebra libraries while the distributed implementation includes Docker, TCP, serialization, scheduling, and aggregation.
+This is expected because NumPy uses highly optimized native linear algebra libraries while the distributed system includes decomposition, serialization, scheduling, TCP communication, Docker isolation, and aggregation.
 
-The goal of this project is not to claim that the microservice system replaces optimized BLAS.
+### Communication Granularity Is Critical
 
-The goal is to understand when distributed parallelism and adaptive task elimination overcome their own systems overhead.
+The large improvement after implementing batching shows that protocol design can dominate total runtime.
 
-### 2. Communication Granularity Matters
+Too many small messages can eliminate the benefit of parallel computation.
 
-The large improvement from task batching demonstrated that protocol design can dominate total runtime.
+### More Workers Do Not Always Improve Performance
 
-Sending many small messages can destroy the benefit of parallel computation.
+Adding workers improved performance only up to a workload-dependent point.
 
-### 3. More Workers Do Not Guarantee Better Performance
+Beyond that point, contention and coordination overhead caused runtime to flatten or regress.
 
-The system improved when workers were added up to a point.
+### Adaptive Task Selection Provides a Strong Benefit
 
-After that point, contention and coordination costs caused performance to flatten or regress.
+The block-sparse experiments produced the strongest result so far.
 
-### 4. Adaptive Task Selection Can Matter More Than Adding Workers
+Exact-zero pruning reduced distributed runtime by approximately 40% to 59%.
 
-This is currently the strongest experimental result.
-
-For block-sparse matrices, exact-zero pruning reduced distributed runtime by approximately 40% to 59%.
-
-After pruning, runtime was almost flat across one, two, and four workers:
+After pruning, runtime was nearly flat across one, two, and four workers:
 
 ```text
 1 worker: 3.460 s
@@ -403,85 +364,44 @@ After pruning, runtime was almost flat across one, two, and four workers:
 4 workers: 3.386 s
 ```
 
-This suggests that eliminating unnecessary distributed work can provide a larger benefit than simply increasing worker count.
+This suggests that removing unnecessary distributed work can be more valuable than simply adding more worker containers.
 
-### 5. The Adaptive System Preserved Correctness
+### Numerical Correctness Is Preserved
 
-Exact-zero pruning removed tasks that mathematically contribute zero to the final result.
+Exact-zero pruning removed only block products that mathematically contribute zero.
 
-The final results continued to match the serial reference within floating-point tolerance.
-
----
-
-## 8. Current Answer to the Research Question
-
-The current evidence suggests:
-
-> Distributed blocked matrix multiplication benefits from parallel workers only while the useful computation added by those workers exceeds communication, scheduling, aggregation, and host-resource overhead.
-
-The experiments also show:
-
-> When the matrices contain exploitable block sparsity, identifying and removing unnecessary block products before dispatch can substantially reduce distributed runtime.
-
-At the current test scale, intelligent task elimination has produced a more consistent performance benefit than simply adding more worker containers.
-
-This is the central result around which the final paper can be organized.
+The final matrices continued to match the serial reference within normal floating-point tolerance.
 
 ---
 
-## 9. What Still Remains?
+## 10. Remaining Work
 
-The core implementation is substantially complete.
+The core implementation is substantially complete. Remaining work is primarily experimental refinement and final documentation.
 
-The remaining work is primarily experimental validation, analysis, documentation, and presentation.
-
-Planned remaining work includes:
+Planned work includes:
 
 - repeat selected final experiments under controlled conditions
-- decide whether additional matrix sizes are necessary
+- determine whether additional matrix sizes are necessary
 - evaluate block-size sensitivity
-- improve instrumentation if needed for communication and compute breakdowns
-- evaluate approximate Frobenius-bound pruning only if it adds useful evidence
+- improve instrumentation if a more detailed communication/compute breakdown is needed
+- evaluate approximate Frobenius-bound pruning only if it adds meaningful evidence
 - decide whether low-rank TCP transmission is worth the remaining development time
 - generate final figures and tables
 - collect and verify at least 10 research references
-- write the final 8-page IEEE or ACM graduate paper
+- complete the 8-page IEEE or ACM graduate paper
 - prepare the graduate presentation
 - prepare a live or recorded demonstration
 
-The low-rank extension remains optional and should not delay completion of the validated sparsity-aware system.
+Low-rank transmission remains optional and will not delay completion of the validated sparsity-aware system.
 
 ---
 
-## 10. Checkpoint 2 Short Verbal Explanation
+## 11. Conclusion
 
-A concise way to explain the project during the checkpoint is:
+The project has progressed from architectural planning into a working and experimentally validated distributed system.
 
-> We built the required distributed matrix multiplication system using separate Docker microservices for scheduling, computation, and aggregation, with TCP communication between them. The matrices are divided into blocks and the block products are distributed to worker containers. Our main research question is whether the benefit of parallel processing is enough to overcome the communication and coordination overhead of distributing the work. We also added an adaptive scheduler that can detect block multiplications that are guaranteed to produce zero and skip them before they are sent over the network. During implementation, we found that network granularity mattered a lot, so we added task batching, and we also controlled NumPy's internal threading so worker-count experiments were more meaningful. Our current results show that adding workers helps only up to a point, but on block-sparse matrices the adaptive scheduler eliminated roughly three quarters of the candidate tasks and reduced distributed runtime by about 40 to 59 percent without changing the numerical result. The remaining work is final experimentation, figures, references, the IEEE/ACM paper, and the graduate presentation and demo.
+The current results show that distributed matrix multiplication is not improved simply by increasing worker count. Performance depends heavily on communication granularity, available host resources, scheduling overhead, and the amount of useful computation per task.
 
----
+The strongest finding so far is that adaptive sparsity-aware task elimination can substantially reduce runtime without sacrificing numerical correctness. For the tested block-sparse workload, the scheduler removed roughly three quarters of the candidate tasks and reduced distributed runtime by approximately 40% to 59%.
 
-## 11. Current Project Status
-
-```text
-Required distributed architecture        COMPLETE
-TCP microservice communication           COMPLETE
-Blocked matrix decomposition             COMPLETE
-Multi-worker execution                   COMPLETE
-Aggregation                              COMPLETE
-Correctness validation                   COMPLETE
-Task batching                            COMPLETE
-Controlled worker threading              COMPLETE
-Exact-zero adaptive pruning              COMPLETE
-Repeated dense scaling experiments       COMPLETE
-Repeated sparse adaptive experiments     COMPLETE
-Approximate pruning experiments          OPTIONAL / PENDING
-Low-rank network transmission            OPTIONAL / NOT INTEGRATED
-Final experimental campaign              PENDING
-Final figures and analysis               PENDING
-10-reference research set                PENDING
-8-page IEEE / ACM paper                  PENDING
-Presentation and demo                    PENDING
-```
-
-The project has moved from implementation into the final experimental and reporting phase.
+The project is now entering its final experimentation, analysis, and reporting phase.
