@@ -69,12 +69,12 @@ The adaptive version inserts a decision step before task dispatch. The baseline 
 ## Documentation
 
 - [Checkpoint 1](Docs/CheckPoint_1.md)
-- [Checkpoint 2 Working Draft](Docs/CheckPoint_2.md)
+- [Checkpoint 2 Report](Docs/Checkpoint2.md)
+- [Checkpoint 2 Meeting Summary](Docs/Checkpoint2_Summary.md)
 - [Implementation Plan](Docs/Implementation_Plan.md)
 - [TCP Protocol Specification](Docs/Protocol_Spec.md)
 - [Testing and Benchmark Plan](Docs/Testing_and_Benchmarking.md)
 - [Local Run Guide](Docs/Local_Run_Guide.md)
-- [Research Roadmap](Docs/Roadmap_V3.md)
 
 ## Definition of the Core Baseline
 
