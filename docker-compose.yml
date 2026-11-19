@@ -20,6 +20,7 @@ services:
       AGGREGATOR_HOST: "aggregator"
       AGGREGATOR_PORT: "9002"
       TASK_LEASE_SECONDS: "${TASK_LEASE_SECONDS:-30}"
+      TASK_BATCH_SIZE: "${TASK_BATCH_SIZE:-8}"
     ports:
       - "9001:9001"
     depends_on:
