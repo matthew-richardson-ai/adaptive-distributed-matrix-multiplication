@@ -23,6 +23,7 @@ from Protocol.constants import (
     MSG_NO_TASK,
     MSG_SUBMIT_ACK,
     MSG_SUBMIT_JOB,
+    MSG_TASK_COMPLETE,
     MSG_TASK_DENSE,
     MSG_TASK_REQUEST,
 )
@@ -42,10 +43,43 @@ class JobStats:
 
 
 class SchedulerState:
-    def __init__(self) -> None:
+    def __init__(self, lease_seconds: float = 30.0) -> None:
         self.tasks: queue.Queue[BlockTask] = queue.Queue()
         self.jobs: Dict[str, JobStats] = {}
+        self.in_flight: Dict[str, tuple[BlockTask, str, float]] = {}
+        self.completed: set[str] = set()
+        self.lease_seconds = lease_seconds
         self.lock = threading.RLock()
+
+    def assign_next(self, worker_id: str) -> BlockTask | None:
+        self.requeue_expired()
+        try:
+            task = self.tasks.get_nowait()
+        except queue.Empty:
+            return None
+        with self.lock:
+            self.in_flight[task.task_id] = (task, worker_id, time.monotonic())
+        return task
+
+    def mark_complete(self, task_id: str) -> bool:
+        with self.lock:
+            if task_id in self.completed:
+                return False
+            self.in_flight.pop(task_id, None)
+            self.completed.add(task_id)
+            return True
+
+    def requeue_expired(self) -> int:
+        now = time.monotonic()
+        expired: list[BlockTask] = []
+        with self.lock:
+            for task_id, (task, _worker_id, assigned_at) in list(self.in_flight.items()):
+                if now - assigned_at >= self.lease_seconds:
+                    expired.append(task)
+                    del self.in_flight[task_id]
+        for task in expired:
+            self.tasks.put(task)
+        return len(expired)
 
     def add_job(
         self,
@@ -86,7 +120,8 @@ class IngressServer:
         self.port = port
         self.aggregator_host = aggregator_host
         self.aggregator_port = aggregator_port
-        self.state = SchedulerState()
+        lease_seconds = float(os.getenv("TASK_LEASE_SECONDS", "30"))
+        self.state = SchedulerState(lease_seconds=lease_seconds)
 
     def _send_error(self, conn: socket.socket, message: str) -> None:
         send_message(conn, MSG_ERROR, {"message": message})
@@ -188,9 +223,8 @@ class IngressServer:
     def _handle_task_request(self, conn: socket.socket, header: dict) -> None:
         worker_id = str(header.get("worker_id", "unknown-worker"))
 
-        try:
-            task = self.state.tasks.get_nowait()
-        except queue.Empty:
+        task = self.state.assign_next(worker_id)
+        if task is None:
             send_message(conn, MSG_NO_TASK, {"worker_id": worker_id, "retry_after_ms": 100})
             return
 
@@ -227,6 +261,14 @@ class IngressServer:
                         self._handle_submit(conn, header, payload)
                     elif header["type"] == MSG_TASK_REQUEST:
                         self._handle_task_request(conn, header)
+                    elif header["type"] == MSG_TASK_COMPLETE:
+                        task_id = str(header["task_id"])
+                        accepted = self.state.mark_complete(task_id)
+                        send_message(
+                            conn,
+                            MSG_TASK_COMPLETE,
+                            {"task_id": task_id, "accepted": accepted},
+                        )
                     else:
                         self._send_error(conn, f"Unsupported message type: {header['type']}")
                 except Exception as exc:
