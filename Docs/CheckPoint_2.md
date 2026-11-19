@@ -62,48 +62,64 @@ Dense matrices will serve as the control case. Block-sparse matrices will test w
 
 ## Current Implementation Status
 
-The architecture and repository structure are established. The project is divided into Ingress, Protocol, Worker, Aggregator, Benchmarks, Tests, Results, and Docs areas.
+The core distributed path is now implemented in the repository and has passed automated unit tests and a Docker end-to-end smoke test in GitHub Actions.
 
-The current implementation priority is the baseline path:
+Implemented components include:
+
+- serial reference multiplication and numerical validation
+- blocked matrix decomposition with padding
+- framed TCP message protocol with explicit payload lengths
+- Ingress service and central task queue
+- Docker worker service
+- dedicated Aggregation service
+- multi-worker pull-based task scheduling
+- leased-task retry support for unfinished work
+- exact-zero and Frobenius-bound sparsity pruning
+- benchmark matrix generators
+- benchmark result recording
+- Docker Compose configuration
+- unit tests for framing, decomposition, aggregation, pruning, low-rank helpers, and serial correctness
+- automated Docker smoke tests for dense and adaptive sparse runs
+
+The verified baseline path is:
 
 ```text
-Serial Reference
-      |
-Decomposition
-      |
-TCP Framing
-      |
-One Worker
-      |
-Aggregation
-      |
-Multiple Workers
-      |
-Instrumentation
+Client / Benchmark Driver
+        |
+        v
+Ingress / Decomposition / Scheduler
+        |
+        v
+TCP Task Queue
+        |
+        v
+Docker Worker(s)
+        |
+        v
+Aggregation Service
+        |
+        v
+Final Matrix + Serial Validation
 ```
-
-Adaptive pruning is intentionally scheduled after the baseline so that its effect can be measured against a correct distributed comparison.
 
 ## What Remains
 
-Core implementation work still includes:
+The remaining work is now primarily experimental and refinement work:
 
-- serial reference and validation
-- matrix decomposition
-- TCP message framing
-- worker execution path
-- aggregation service
-- multi-worker scheduling
-- benchmark instrumentation
-- Docker Compose configuration
-- correctness and protocol tests
+- run the development benchmark matrix locally
+- test larger matrix sizes and additional worker counts
+- collect repeated benchmark trials
+- measure the crossover between distributed overhead and useful speedup
+- evaluate exact-zero and approximate pruning on sparse inputs
+- tune block sizes and task lease settings
+- review worker utilization and communication behavior
+- decide whether low-rank transmission is worth integrating into the network path
+- produce final figures and tables
+- complete the 10-reference research set
+- expand the paper into the final 8-page IEEE or ACM submission
+- prepare the graduate presentation and demonstration
 
-After the baseline is stable:
-
-- exact-zero pruning
-- approximate sparsity pruning
-- limited worker failure recovery
-- low-rank extension if time permits
+Low-rank factorization helpers and worker kernels exist, but low-rank factored transmission is still treated as an optional extension rather than part of the required baseline.
 
 ## Issues and Friction
 
@@ -124,13 +140,18 @@ Additional expected friction includes TCP framing, block-size tradeoffs, worker 
 
 ## Immediate Goal Before Final Experimentation
 
-Produce the same correct matrix result through:
+The end-to-end distributed path has now been exercised successfully in automated Docker smoke testing. The immediate goal is to reproduce that result locally in VS Code and begin the controlled benchmark campaign.
+
+The next sequence is:
 
 ```text
-Ingress -> TCP -> Docker Worker(s) -> Aggregator -> Final Matrix
+Local correctness run
+-> Development benchmark suite
+-> Worker-count and block-size sweeps
+-> Adaptive sparse comparisons
+-> Repeated final trials
+-> Results analysis
 ```
-
-Once that path is reliable, benchmark it before enabling adaptive behavior.
 
 ## Graduate Deliverable Direction
 
