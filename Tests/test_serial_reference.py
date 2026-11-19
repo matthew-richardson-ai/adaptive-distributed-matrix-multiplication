@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from Benchmarks.serial_reference import (
+    multiply_blocked_serial,
     multiply_serial,
     validate_multiplication_shapes,
     validate_result,
@@ -27,3 +28,19 @@ def test_validate_result():
     a = np.eye(3)
     b = a + 1e-13
     assert validate_result(a, b)
+
+
+def test_blocked_serial_matches_numpy():
+    rng = np.random.default_rng(7)
+    a = rng.standard_normal((7, 5))
+    b = rng.standard_normal((5, 6))
+    result = multiply_blocked_serial(a, b, block_size=3)
+    assert result.block_size == 3
+    assert result.elapsed_seconds >= 0.0
+    assert np.allclose(result.matrix, a @ b)
+
+
+def test_blocked_serial_rejects_invalid_block_size():
+    a = np.eye(2)
+    with pytest.raises(ValueError):
+        multiply_blocked_serial(a, a, block_size=0)
