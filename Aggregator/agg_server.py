@@ -201,10 +201,8 @@ class AggregatorServer:
                 except ConnectionError:
                     return
                 except (ProtocolError, ValueError, KeyError) as exc:
-                    try:
-                        self._send_error(conn, str(exc))
-                    finally:
-                        return
+                    self._send_error(conn, str(exc))
+                    return
 
                 message_type = header["type"]
                 try:
