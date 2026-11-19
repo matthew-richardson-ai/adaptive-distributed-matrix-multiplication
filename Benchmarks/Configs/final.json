@@ -1,0 +1,15 @@
+{
+  "sizes": [100, 500, 1000, 2000, 5000],
+  "block_sizes": [128, 256, 512],
+  "worker_counts": [1, 2, 4, 8],
+  "matrix_types": ["dense", "block_sparse"],
+  "adaptive_modes": [
+    {"adaptive": false, "epsilon": 0.0},
+    {"adaptive": true, "epsilon": 0.0},
+    {"adaptive": true, "epsilon": 1e-10}
+  ],
+  "zero_block_fraction": 0.5,
+  "seed": 1234,
+  "repeats": 3,
+  "timeout_seconds": 900
+}
