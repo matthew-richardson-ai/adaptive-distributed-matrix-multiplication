@@ -1,0 +1,41 @@
+services:
+  aggregator:
+    build:
+      context: .
+      dockerfile: Aggregator/Dockerfile
+    environment:
+      AGGREGATOR_BIND_HOST: "0.0.0.0"
+      AGGREGATOR_PORT: "9002"
+    ports:
+      - "9002:9002"
+    restart: unless-stopped
+
+  ingress:
+    build:
+      context: .
+      dockerfile: Ingress/Dockerfile
+    environment:
+      INGRESS_BIND_HOST: "0.0.0.0"
+      INGRESS_PORT: "9001"
+      AGGREGATOR_HOST: "aggregator"
+      AGGREGATOR_PORT: "9002"
+      TASK_LEASE_SECONDS: "${TASK_LEASE_SECONDS:-30}"
+    ports:
+      - "9001:9001"
+    depends_on:
+      - aggregator
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Worker/Dockerfile
+    environment:
+      INGRESS_HOST: "ingress"
+      INGRESS_PORT: "9001"
+      AGGREGATOR_HOST: "aggregator"
+      AGGREGATOR_PORT: "9002"
+    depends_on:
+      - ingress
+      - aggregator
+    restart: unless-stopped
