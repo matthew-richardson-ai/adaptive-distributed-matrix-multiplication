@@ -9,7 +9,7 @@ import numpy as np
 
 from Benchmarks.generate_data import generate_pair
 from Benchmarks.metrics import BenchmarkRecord, relative_frobenius_error, save_record
-from Benchmarks.serial_reference import multiply_serial, validate_result
+from Benchmarks.serial_reference import multiply_blocked_serial, multiply_serial, validate_result
 from Protocol.constants import (
     MSG_ERROR,
     MSG_JOB_RESULT,
@@ -164,6 +164,14 @@ def main() -> None:
     )
 
     serial = multiply_serial(generated.a, generated.b)
+    blocked_serial = multiply_blocked_serial(
+        generated.a,
+        generated.b,
+        block_size=args.block_size,
+    )
+    if not validate_result(blocked_serial.matrix, serial.matrix):
+        raise AssertionError("Blocked serial result does not match the NumPy reference.")
+
     distributed = run_distributed(
         a=generated.a,
         b=generated.b,
@@ -182,12 +190,17 @@ def main() -> None:
         raise AssertionError("Distributed result does not match the serial reference.")
 
     rel_error = relative_frobenius_error(distributed.matrix, serial.matrix)
-    speedup = (
+    speedup_vs_numpy = (
         serial.elapsed_seconds / distributed.elapsed_seconds
         if distributed.elapsed_seconds > 0
         else float("inf")
     )
-    efficiency = speedup / max(args.workers, 1)
+    speedup_vs_blocked = (
+        blocked_serial.elapsed_seconds / distributed.elapsed_seconds
+        if distributed.elapsed_seconds > 0
+        else float("inf")
+    )
+    efficiency_vs_blocked = speedup_vs_blocked / max(args.workers, 1)
 
     record = BenchmarkRecord(
         matrix_type=args.matrix_type,
@@ -198,9 +211,11 @@ def main() -> None:
         epsilon=args.epsilon,
         seed=args.seed,
         serial_seconds=serial.elapsed_seconds,
+        blocked_serial_seconds=blocked_serial.elapsed_seconds,
         distributed_seconds=distributed.elapsed_seconds,
-        speedup=speedup,
-        efficiency=efficiency,
+        speedup_vs_numpy=speedup_vs_numpy,
+        speedup_vs_blocked=speedup_vs_blocked,
+        efficiency_vs_blocked=efficiency_vs_blocked,
         total_candidate_tasks=distributed.total_candidate_tasks,
         queued_tasks=distributed.queued_tasks,
         pruned_tasks=distributed.pruned_tasks,
@@ -208,10 +223,12 @@ def main() -> None:
     )
     save_record(record, args.output)
 
-    print(f"Serial time:       {serial.elapsed_seconds:.6f} s")
-    print(f"Distributed time:  {distributed.elapsed_seconds:.6f} s")
-    print(f"Speedup:           {speedup:.4f}x")
-    print(f"Efficiency:        {efficiency:.4f}")
+    print(f"NumPy serial time:       {serial.elapsed_seconds:.6f} s")
+    print(f"Blocked serial time:     {blocked_serial.elapsed_seconds:.6f} s")
+    print(f"Distributed time:        {distributed.elapsed_seconds:.6f} s")
+    print(f"Speedup vs NumPy:        {speedup_vs_numpy:.4f}x")
+    print(f"Speedup vs blocked:      {speedup_vs_blocked:.4f}x")
+    print(f"Efficiency vs blocked:   {efficiency_vs_blocked:.4f}")
     print(f"Tasks candidate:   {distributed.total_candidate_tasks}")
     print(f"Tasks queued:      {distributed.queued_tasks}")
     print(f"Tasks pruned:      {distributed.pruned_tasks}")
