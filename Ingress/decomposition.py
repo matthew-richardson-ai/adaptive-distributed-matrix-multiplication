@@ -6,7 +6,14 @@ import uuid
 
 import numpy as np
 
-from Benchmarks.serial_reference import validate_multiplication_shapes
+def validate_multiplication_shapes(a: np.ndarray, b: np.ndarray) -> None:
+    """Validate matrix multiplication compatibility without benchmark dependencies."""
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("Both inputs must be 2-D matrices.")
+    if a.shape[1] != b.shape[0]:
+        raise ValueError(
+            f"Incompatible matrix shapes for multiplication: {a.shape} and {b.shape}."
+        )
 
 
 @dataclass(frozen=True)
