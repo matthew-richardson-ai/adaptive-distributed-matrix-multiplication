@@ -1,7 +1,7 @@
 # Checkpoint 2 Meeting Summary
 
 **CSC 4770 / 5770 – Adaptive Distributed Matrix Multiplication**  
-**Matthew Richardson and James**
+**James Finnegan and Matthew Richardson**
 
 ## Project Goal
 
