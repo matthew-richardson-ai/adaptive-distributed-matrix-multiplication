@@ -219,3 +219,23 @@ Run these in order:
 6. development benchmark suite
 
 Once those pass, increase matrix sizes and worker counts.
+
+
+## Batched protocol optimization
+
+The worker protocol now requests multiple block tasks at once and returns a batch of partial results in one message. The default batch size is 8 and can be changed before starting Compose:
+
+```powershell
+$env:TASK_BATCH_SIZE="16"
+docker compose up -d --build --scale worker=2
+```
+
+After pulling protocol changes, rebuild the images before benchmarking:
+
+```powershell
+git pull origin main
+docker compose down
+docker compose up -d --build --scale worker=2
+```
+
+Use the same benchmark commands after the containers report healthy startup logs.
