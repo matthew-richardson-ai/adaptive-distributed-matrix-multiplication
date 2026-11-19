@@ -1,14 +1,32 @@
 {
-  "sizes": [100, 500],
-  "block_sizes": [64, 128],
-  "worker_counts": [1, 2],
-  "matrix_types": ["dense", "block_sparse"],
+  "sizes": [
+    100,
+    500
+  ],
+  "block_sizes": [
+    64,
+    128
+  ],
+  "worker_counts": [
+    1,
+    2
+  ],
+  "matrix_types": [
+    "dense",
+    "block_sparse"
+  ],
   "adaptive_modes": [
-    {"adaptive": false, "epsilon": 0.0},
-    {"adaptive": true, "epsilon": 0.0}
+    {
+      "adaptive": false,
+      "epsilon": 0
+    },
+    {
+      "adaptive": true,
+      "epsilon": 0
+    }
   ],
   "zero_block_fraction": 0.5,
   "seed": 1234,
-  "repeats": 1,
+  "repeats": 3,
   "timeout_seconds": 180
 }
