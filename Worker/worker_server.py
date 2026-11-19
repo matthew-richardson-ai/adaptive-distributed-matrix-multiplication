@@ -14,6 +14,7 @@ from Protocol.constants import (
     MSG_NO_TASK,
     MSG_RESULT_ACK,
     MSG_RESULT_RETURN,
+    MSG_TASK_COMPLETE,
     MSG_TASK_DENSE,
     MSG_TASK_REQUEST,
 )
@@ -93,6 +94,21 @@ def run_worker() -> None:
                 raise RuntimeError(ack.get("message", "Aggregator returned an error."))
             if ack["type"] != MSG_RESULT_ACK:
                 raise RuntimeError(f"Unexpected aggregator response: {ack['type']}")
+
+            send_message(
+                ingress,
+                MSG_TASK_COMPLETE,
+                {
+                    "worker_id": worker_id,
+                    "job_id": header["job_id"],
+                    "task_id": header["task_id"],
+                },
+            )
+            completion_ack, _ = recv_message(ingress)
+            if completion_ack["type"] != MSG_TASK_COMPLETE:
+                raise RuntimeError(
+                    f"Unexpected task completion response: {completion_ack['type']}"
+                )
 
         except (ConnectionError, OSError) as exc:
             print(f"{worker_id} reconnecting after connection failure: {exc}", flush=True)
