@@ -20,9 +20,11 @@ class BenchmarkRecord:
     epsilon: float
     seed: int
     serial_seconds: float
+    blocked_serial_seconds: float
     distributed_seconds: float
-    speedup: float
-    efficiency: float
+    speedup_vs_numpy: float
+    speedup_vs_blocked: float
+    efficiency_vs_blocked: float
     total_candidate_tasks: int
     queued_tasks: int
     pruned_tasks: int
