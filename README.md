@@ -4,20 +4,32 @@ Graduate CSC 5770 project implementing blocked matrix multiplication as a TCP-co
 
 ## Current Project Status
 
-The repository currently contains the project architecture, Checkpoint 1 documentation, and implementation scaffolding. The immediate implementation priority is the correct distributed baseline.
+The core distributed baseline is implemented and has passed automated unit tests and Docker end-to-end smoke testing.
 
-Current order of work:
+Implemented:
 
-1. Serial reference and numerical validation
-2. Matrix decomposition and block task generation
-3. TCP framing and message definitions
-4. One-worker end-to-end distributed path
-5. Multi-worker pull-based scheduling
-6. Aggregation and correctness validation
-7. Instrumentation and benchmark harness
-8. Exact-zero / sparsity-aware pruning
-9. Fault recovery
-10. Low-rank extension only if time permits
+- serial reference and numerical validation
+- blocked matrix decomposition and padding
+- framed TCP protocol
+- Ingress / scheduler service
+- scalable Docker workers
+- aggregation service
+- multi-worker pull scheduling
+- task lease / retry support
+- exact-zero and Frobenius-bound adaptive pruning
+- deterministic benchmark generators
+- benchmark recording and suite configuration
+- Docker Compose environment
+- automated unit and end-to-end tests
+
+Current priority:
+
+1. reproduce the smoke tests locally
+2. run the development benchmark suite
+3. collect worker-count and block-size comparisons
+4. evaluate adaptive pruning on sparse inputs
+5. perform repeated final trials and analyze results
+6. integrate low-rank transmission only if the measured results justify the extra scope
 
 ## Target Architecture
 
