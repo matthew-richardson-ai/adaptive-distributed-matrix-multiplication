@@ -35,6 +35,9 @@ def main() -> None:
     sparse_fraction = float(config.get("zero_block_fraction", 0.5))
     timeout = float(config.get("timeout_seconds", 300))
 
+    if args.manage_docker:
+        run_command(["docker", "compose", "build"])
+
     for workers in worker_counts:
         if args.manage_docker:
             run_command(
@@ -43,9 +46,9 @@ def main() -> None:
                     "compose",
                     "up",
                     "-d",
-                    "--build",
                     "--scale",
                     f"worker={workers}",
+                    "--remove-orphans",
                 ]
             )
             time.sleep(3)
