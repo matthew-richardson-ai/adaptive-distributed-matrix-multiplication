@@ -1,5 +1,7 @@
 # CSC 4770 / 5770 Checkpoint 2 Human Summary
 
+**James Finnegan and Matthew Richardson**
+
 ## Adaptive Distributed Matrix Multiplication
 
 ### Purpose of This Document
